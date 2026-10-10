@@ -448,7 +448,7 @@ const L1 = {
   ],
   drones: [
     // walkers: slow pacing, two close together so you can stomp one into the other
-    ['walker', 520, 680, GROUND - 12, 6.0],
+    ['walker', 520, 680, GROUND - 12, 6.0, { escort: 145 }],   // first escorted thug: fling him into his drone
     ['walker', 740, 900, GROUND - 12, 6.8],
     // staircase: walker, then two hovering drones stepping up to the dock
     ['walker', 1450, 1650, GROUND - 12, 6.4],
@@ -469,7 +469,7 @@ const L1 = {
     // Hook drones win auto-aim, so pressing Swing over the pit grabs these, not the red drones below.
     ['hook', 4140, 4170, 228, 3.0],
     ['hook', 4450, 4480, 222, 3.2],
-    ['walker', 4650, 4850, GROUND - 12, 6.0],
+    ['walker', 4650, 4850, GROUND - 12, 6.0, { escort: 145 }],
   ],
   vents: [],
   crumble: [],
@@ -529,8 +529,8 @@ const L2 = {
     ['hook', 3440, 3470, 230, 3.2],                // or hook this one and swing up
     ['patrol', 4080, 4110, 480, 2.4],              // bounce pit
     ['patrol', 4220, 4250, 460, 2.6],
-    ['walker', 4520, 4680, GROUND - 12, 5.8],
-    ['walker', 5050, 5250, GROUND - 12, 6.4],
+    ['walker', 4520, 4680, GROUND - 12, 5.8, { escort: 145 }],
+    ['walker', 5050, 5250, GROUND - 12, 6.4, { escort: 145 }],
   ],
   vents: [
     { x: 4760, y: GROUND, per: 2.6, on: 0.9, ph: 0.4 },   // steam lift toward the bonus girder
@@ -598,7 +598,7 @@ const L3 = {
     ['hook', 3200, 3240, -40, 3.0],                // over roof D
     ['hook', 2060, 2090, 310, 2.8],                // at the foot of chimney 2
     ['hook', 1180, 1220, -60, 3.2],                // over roof A
-    ['walker', 3500, 3700, GROUND - 12, 5.6],
+    ['walker', 3500, 3700, GROUND - 12, 5.6, { escort: 145 }],
     ['patrol', 3900, 3930, 480, 2.4],
     ['patrol', 4050, 4080, 440, 2.6],
     ['walker', 4150, 4350, GROUND - 12, 6.2],
@@ -651,14 +651,12 @@ const L4 = {
   ],
   drones: [
     ['walker', 150, 350, GROUND - 12, 6.0],
-    ['walker', 1600, 1850, GROUND - 12, 6.2],
-    ['patrol', 1700, 1740, 470, 2.6],
+    ['walker', 1600, 1850, GROUND - 12, 6.2, { escort: 145 }],   // (was a red drone at 1700-1740, now his escort)
     ['hook', 3100, 3150, -420, 3.0],               // canyon: a moving third anchor
     ['walker', 3650, 3950, -12, 5.8],
     ['hook', 4740, 4780, 60, 3.0],
     ['walker', 5200, 5380, GROUND - 12, 5.6],
-    ['patrol', 5500, 5530, 480, 2.4],
-    ['walker', 5550, 5750, GROUND - 12, 6.4],
+    ['walker', 5550, 5750, GROUND - 12, 6.4, { escort: 145 }],   // (was a red drone at 5500-5530, now his escort)
   ],
   vents: [],
   crumble: [[2850, -450], [4900, 120]],
@@ -706,7 +704,7 @@ const L5 = {
     ['walker', 2150, 2400, 250 - 12, 5.8],
     ['hook', 2880, 2960, -150, 3.4],               // moving anchor over the canyon
     ['patrol', 4840, 4890, 80, 2.6],               // stomp it between swings for a chain bonus
-    ['walker', 5350, 5650, 200 - 12, 5.6],
+    ['walker', 5350, 5650, 200 - 12, 5.6, { escort: 145 }],
     ['hook', 6130, 6170, -260, 3.0],
     ['walker', 6700, 6950, 250 - 12, 6.2],
   ],
@@ -1038,7 +1036,7 @@ const FINALE_DRONES = [
   ['hook', 6500, 6700, 70, 4.0],       // over the street, before the billboard
   ['patrol', 7440, 7840, 238, 3.4],    // landing roof
   ['hook', 8690, 8890, -210, 4.4],     // finale line
-  ['walker', 11500, 11850, -1512, 5.8],
+  ['walker', 11500, 11850, -1512, 5.8, { escort: 145 }],
   ['hook', 12520, 12680, -2060, 3.4],  // high wire
   ['walker', 13250, 13600, -1712, 5.6],
   ['hook', 13900, 14100, -2900, 4.4],  // the spire: a moving anchor over the rest platform
@@ -1203,7 +1201,12 @@ function loadLevel(i) {
   TOKENS.length = 0; TOKENS.push(...L.tokens());
   FINISH_X = L.finish; FALL_LIMIT = L.fallLimit || 0; SIGNS = L.signs || []; CLIMB_ZONES = L.climbZones || [];
   DRONES.length = 0;
-  L.drones.forEach(([kind, x0, x1, y, per], j) => DRONES.push({ kind, x0, x1, y0: y, per, x: x0, y, alive: true, phase: j * 0.37, boom: 0, vx: 0 }));
+  L.drones.forEach(([kind, x0, x1, y, per, opt], j) => {
+    DRONES.push({ kind, x0, x1, y0: y, per, x: x0, y, alive: true, phase: j * 0.37, boom: 0, vx: 0 });
+    // an escort: a red drone that rides directly over its thug (same path and timing), so flinging the thug
+    // always blows it up too (Jeremy, v59). Set by { escort: height } on a walker.
+    if (opt && opt.escort) DRONES.push({ kind: 'patrol', x0, x1, y0: y - opt.escort, per, x: x0, y: y - opt.escort, alive: true, phase: j * 0.37, boom: 0, vx: 0 });
+  });
   setupBoss(L.boss);
   VENTS.length = 0; VENTS.push(...L.vents.map(v => ({ ...v })));
   try { localStorage.setItem('grapple-level', String(i)); } catch (e) {}
@@ -1331,8 +1334,8 @@ function stepHazards(dt) {
     const y = d.yank; if (!y) continue;
     y.t += dt;
     const hx = cx + p.facing * 10, hy = cy - 4, ddx = hx - d.x, ddy = hy - d.y, dist = Math.hypot(ddx, ddy) || 1;
-    if (y.up) {   // a flung thug: straight up, tumbling, and he bursts at the top
-      if (y.t >= 0.09) { y.vy += 2300 * dt; d.y += y.vy * dt; d.spin += 18 * dt; if (Math.random() < 0.4) smoke.push({ x: d.x, y: d.y, vx: 0, vy: 20, r: 3, t: 0, life: 0.4, fire: false }); }
+    if (y.up) {   // a flung thug: straight up, tumbling, and he bursts at the top (keeping his walking speed, so he stays under his escort)
+      if (y.t >= 0.09) { y.vy += 2300 * dt; d.y += y.vy * dt; d.x += y.vx * dt; d.spin += 18 * dt; if (Math.random() < 0.4) smoke.push({ x: d.x, y: d.y, vx: 0, vy: 20, r: 3, t: 0, life: 0.4, fire: false }); }
       else d.x += Math.sin(y.t * 220) * 1.5;
     } else if (y.t < 0.09) { d.x += Math.sin(y.t * 220) * 1.5; }                  // the jolt when it goes taut
     else {
@@ -1392,7 +1395,7 @@ function droneTarget(cx, cy, dir, manual = false) {
     if (walker ? dx * dir < 40 || dy < -60 : dy > (d.kind === 'patrol' ? 20 : -40)) continue;   // thugs: ahead, on or below your level; red drones: down to your level (low ones just get yanked)
     const block = raycast(cx, cy, dx / dist, dy / dist, dist);
     if (block) continue;
-    const score = Math.abs(dist - T.aimIdealDistance) * 0.5 + (d.kind === 'patrol' || walker ? 120 : 0);   // cancels the drone priority below
+    const score = Math.abs(dist - T.aimIdealDistance) * 0.5 + (d.kind === 'patrol' ? 120 : walker ? 70 : 0);   // cancels the drone priority below; thugs edge out their escort drones
     if (!best || score < best.score) best = { x: d.x, y: ty, d: dist, score, drone: d };
   }
   return best;
@@ -1769,7 +1772,7 @@ function attach(hit, from) {
   addChain(); SFX.chainThrow(); SFX.chainBite();
   if (hit.drone && hit.drone.kind === 'walker') {   // a thug: the chain bites and flings him straight up, where he bursts
     const d = hit.drone;
-    d.alive = false; d.yank = { t: 0, vx: 0, vy: -870, up: true };   // ~165 px up (Jeremy: half the old lift) d.spin = 0;
+    d.alive = false; d.yank = { t: 0, vx: d.vx, vy: -870, up: true };   // ~165 px up (Jeremy: half the old lift) d.spin = 0;
     award(500, d.x, d.y - 30, 'Yank'); SFX.yankGrab(); sparkAt(d.x, d.y, 10);
     return;
   }
