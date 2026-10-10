@@ -1389,8 +1389,7 @@ function droneTarget(cx, cy, dir, manual = false) {
     const walker = d.kind === 'walker', ty = walker ? d.y - 4 : d.y + 6;
     const dx = d.x - cx, dy = ty - cy, dist = Math.hypot(dx, dy);
     if (dist > ropeLen() || dist < T.ropeMinLength * 1.3 || dx * dir < -40) continue;
-    if (walker ? dx * dir < 40 || dy < -60 : dy > -40) continue;   // thugs: ahead of you, on or below your level
-    if (d.kind === 'patrol' && !manual && dy > -90) continue;   // auto-aim skips red drones barely above you (no swinging into pits); aim at one to grab it
+    if (walker ? dx * dir < 40 || dy < -60 : dy > (d.kind === 'patrol' ? 20 : -40)) continue;   // thugs: ahead, on or below your level; red drones: down to your level (low ones just get yanked)
     const block = raycast(cx, cy, dx / dist, dy / dist, dist);
     if (block) continue;
     const score = Math.abs(dist - T.aimIdealDistance) * 0.5 + (d.kind === 'patrol' || walker ? 120 : 0);   // cancels the drone priority below
@@ -1770,10 +1769,13 @@ function attach(hit, from) {
   addChain(); SFX.chainThrow(); SFX.chainBite();
   if (hit.drone && hit.drone.kind === 'walker') {   // a thug: the chain bites and flings him straight up, where he bursts
     const d = hit.drone;
-    d.alive = false; d.yank = { t: 0, vx: 0, vy: -1250, up: true }; d.spin = 0;
+    d.alive = false; d.yank = { t: 0, vx: 0, vy: -870, up: true };   // ~165 px up (Jeremy: half the old lift) d.spin = 0;
     award(500, d.x, d.y - 30, 'Yank'); SFX.yankGrab(); sparkAt(d.x, d.y, 10);
     return;
   }
+  // a red drone barely above you is too low to swing from (it would drop you into the pit below it),
+  // so grabbing one always yanks it straight in, whether you tap or hold
+  if (hit.drone && hit.drone.kind === 'patrol' && hit.y - (player.y + PH / 2) > -90) { yankDrone(hit.drone); return; }
   const [cx, cy] = center();
   const d = Math.hypot(hit.x - cx, hit.y - cy), src = hit;
   // Back the anchor off the surface a hair so the wrap check never starts inside the solid.
@@ -1783,16 +1785,17 @@ function attach(hit, from) {
   player.ropeFrom = from;
   player.jumping = false;
 }
+function yankDrone(dr) {
+  dr.alive = false; dr.yank = { t: 0, vx: dr.vx * 0.3, vy: -120 }; dr.spin = 0;
+  if (dr.kind === 'core') { BOSS.coreBack = CORE_REGROW; bossHit('Core ripped'); } else award(500, dr.x, dr.y - 20, 'Yank');
+  SFX.yankGrab();
+  sparkAt(dr.x, dr.y + 6, 10);
+}
 function release(withJump) {
   if (!player.rope) return;
   SFX.release();
   const dr = player.rope.drone, ropeT = player.rope.t;
-  if (dr && dr.alive && player.rope.t < 0.25) {   // quick tap: the chain rips the drone out of the sky toward you
-    dr.alive = false; dr.yank = { t: 0, vx: dr.vx * 0.3, vy: -120 }; dr.spin = 0;
-    if (dr.kind === 'core') { BOSS.coreBack = CORE_REGROW; bossHit('Core ripped'); } else award(500, dr.x, dr.y - 20, 'Yank');
-    SFX.yankGrab();
-    sparkAt(dr.x, dr.y + 6, 10);
-  }
+  if (dr && dr.alive && player.rope.t < 0.25) yankDrone(dr);   // quick tap: the chain rips the drone out of the sky toward you
   if (dr && dr.alive) dr.safe = worldT + 0.35;
   player.rope = null;
   // the cape adds the big fling: CAPE_GAIN scales what it adds on top of a no-cape release (Jeremy: doubled)
