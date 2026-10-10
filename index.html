@@ -23,6 +23,10 @@
 }
 html, body { height: 100%; margin: 0; overflow: hidden; background: var(--sky-top); color: var(--ink); overscroll-behavior: none; }
 body { font-family: var(--mono); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* no browser zoom on phones (testers were pinch/double-tap zooming and losing the controls): nothing on the page
+   pinches or double-tap zooms; the title screen and Tune panel can still scroll vertically */
+html, body { touch-action: none; overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, .hudbtn, #hud, #hud *, #intro, #toast, .pad { touch-action: none; }
 [hidden] { display: none !important; }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
@@ -1629,6 +1633,13 @@ function padsFromTouches(e) {
   if (pointerAim && [...e.touches].every(t => padAt(t.clientX, t.clientY))) pointerAim = null;   // no finger left on the screen to aim with
 }
 for (const type of ['touchstart', 'touchend', 'touchcancel']) document.addEventListener(type, padsFromTouches, { passive: true });
+// iOS Safari ignores user-scalable=no, so block its pinch and double-tap zoom gestures directly
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+// if the page somehow ends up zoomed anyway, rewriting the viewport tag snaps it back on most phone browsers
+if (window.visualViewport) visualViewport.addEventListener('resize', () => {
+  if (visualViewport.scale > 1.01) { const m = document.querySelector('meta[name=viewport]'); const c = m.content; m.content = c + ', minimum-scale=1'; setTimeout(() => { m.content = c; }, 50); }
+});
 document.addEventListener('touchmove', e => { padsFromTouches(e); if (!e.target.closest('#tune, #title')) e.preventDefault(); }, { passive: false });
 
 function readInput() {
