@@ -2739,6 +2739,28 @@ function drawEnemy(d, X, Y, t, k) {
   g.imageSmoothingEnabled = false;
   g.drawImage(enemyC, Math.round(ox - h * f * ENEMY_WIDE), Math.round(oy - h * f), Math.round(64 * f * ENEMY_WIDE), Math.round(64 * f));
 }
+// Travel rails: a faint dashed line along each enemy's patrol path, with [ ] caps just outside the furthest
+// its body reaches, so you can read how far it goes and time a stomp, a smash or a yank. Red hurts, cyan hooks.
+// Drawn in two passes: the rail behind the enemies, the caps in front so the halo never hides them.
+function drawTrack(d, X, Y, k, caps) {
+  if (d.kind === 'core' || d.x1 - d.x0 < 4) return;
+  const walker = d.kind === 'walker', col = d.kind === 'hook' ? '#8fdcff' : '#ff5a3c';
+  const f = Math.round(Math.max(1, k / SPRITE_K) * 4) / 4, half = Math.ceil((walker ? 7 : 10) * f * ENEMY_WIDE) + 2;
+  const a = X(d.x0) - half, b = X(d.x1) + half, y = Y(walker ? d.y0 + 12 : d.y0) - (walker ? 2 : 0);
+  if (b < -8 || a > lo.width + 8) return;
+  if (!caps) {
+    g.globalAlpha = 0.45; g.fillStyle = col;
+    for (let x = a + 3; x < b - 3; x += 4) g.fillRect(x, y, 2, 1);   // dashes anchored to the rail, so they don't crawl
+    g.globalAlpha = 1; return;
+  }
+  const h = walker ? 3 : 4;
+  g.globalAlpha = 0.9;
+  for (const [x, dir] of [[a, 1], [b - 1, -1]]) {   // stubs point inward
+    g.fillStyle = '#070a16'; g.fillRect(x - 1, y - h - 1, 3, h * 2 + 3); g.fillRect(x + dir, y - h - 1, dir, 3); g.fillRect(x + dir, y + h - 1, dir, 3);
+    g.fillStyle = col; g.fillRect(x, y - h, 1, h * 2 + 1); g.fillRect(x + dir, y - h, 1, 1); g.fillRect(x + dir, y + h, 1, 1);
+  }
+  g.globalAlpha = 1;
+}
 function drawDrone(d, X, Y, t) {
   if (d.yank && d.spin) {   // tumbling on the chain: draw it rotated around its centre
     const cx0 = X(d.x), cy0 = Y(d.y);
@@ -3003,7 +3025,9 @@ function render() {
   }
   for (const v of VENTS) drawVent(v, X, Y);
   drawBoss(X, Y, t, k);
+  for (const d of DRONES) if (d.alive && !d.yank) drawTrack(d, X, Y, k, false);
   for (const d of DRONES) if (d.alive || d.yank) drawEnemy(d, X, Y, t, k);
+  for (const d of DRONES) if (d.alive && !d.yank) drawTrack(d, X, Y, k, true);
   drawFx(X, Y, k);
   for (const q of particles) { g.fillStyle = q.col; g.fillRect(X(q.x), Y(q.y), 2, 2); g.fillStyle = q.col; g.fillRect(X(q.x - q.vx * 0.012), Y(q.y - q.vy * 0.012), 1, 1); }
 
