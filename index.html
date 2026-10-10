@@ -247,7 +247,7 @@ body { font-family: var(--mono); -webkit-user-select: none; user-select: none; -
         </div>
         <div class="how-col"><h4>Moves</h4>
           <p><b>Swing:</b> pump back and forth, then let go on the up-swing to fly. Press Jump as you let go for extra height.</p>
-          <p><b>Enemies:</b> land on them to stomp, smash into them at speed, or quick-tap Swing on any drone to yank it down. A yanked drone wrecks any enemy it hits on the way.</p>
+          <p><b>Enemies:</b> land on them to stomp, smash into them at speed, or quick-tap Swing on any drone to yank it down. Swing at a thug to fling him into the air. Anything you yank wrecks the enemies it hits.</p>
           <p><b>Walls:</b> hit a wall fast to run up it, jump off it to climb.</p>
         </div>
         <div class="how-col"><h4>Score</h4>
@@ -465,6 +465,10 @@ const L1 = {
     ['patrol', 4170, 4200, 495, 2.4],
     ['patrol', 4320, 4350, 480, 2.6],
     ['patrol', 4460, 4490, 490, 2.8],
+    // upper row (v57): hook drones flanking the backup girder, high enough to stay clear of the bounce arc.
+    // Hook drones win auto-aim, so pressing Swing over the pit grabs these, not the red drones below.
+    ['hook', 4140, 4170, 228, 3.0],
+    ['hook', 4450, 4480, 222, 3.2],
     ['walker', 4650, 4850, GROUND - 12, 6.0],
   ],
   vents: [],
@@ -1327,7 +1331,10 @@ function stepHazards(dt) {
     const y = d.yank; if (!y) continue;
     y.t += dt;
     const hx = cx + p.facing * 10, hy = cy - 4, ddx = hx - d.x, ddy = hy - d.y, dist = Math.hypot(ddx, ddy) || 1;
-    if (y.t < 0.09) { d.x += Math.sin(y.t * 220) * 1.5; }                  // the jolt when it goes taut
+    if (y.up) {   // a flung thug: straight up, tumbling, and he bursts at the top
+      if (y.t >= 0.09) { y.vy += 2300 * dt; d.y += y.vy * dt; d.spin += 18 * dt; if (Math.random() < 0.4) smoke.push({ x: d.x, y: d.y, vx: 0, vy: 20, r: 3, t: 0, life: 0.4, fire: false }); }
+      else d.x += Math.sin(y.t * 220) * 1.5;
+    } else if (y.t < 0.09) { d.x += Math.sin(y.t * 220) * 1.5; }                  // the jolt when it goes taut
     else {
       const pull = 5200 * Math.min(1, (y.t - 0.09) * 6);
       y.vx += ddx / dist * pull * dt; y.vy += ddy / dist * pull * dt + 600 * dt;
@@ -1345,7 +1352,7 @@ function stepHazards(dt) {
       addChain(); award(400, o.x, o.y - 20, 'Wrecked'); killDrone(o, y.vx / sp, y.vy / sp, 1.1);
       y.vx *= 0.8; y.vy *= 0.8;
     }
-    if (y.t > 0.09 && (dist < 34 || y.t > 0.6)) killDrone(d, y.vx / 900, y.vy / 900, 0.9);
+    if (y.up ? y.t > 0.09 && y.vy > -150 : y.t > 0.09 && (dist < 34 || y.t > 0.6)) killDrone(d, y.vx / 900, y.up ? -0.6 : y.vy / 900, 0.9);
   }
   for (let i = debris.length - 1; i >= 0; i--) {
     const q = debris[i];
@@ -1373,17 +1380,21 @@ const ventWarn = v => ventPhase(v) > v.per - 0.6;
 
 // Drones are auto-aim targets: the nearest one roughly ahead and above, with a clear line to it.
 // Red patrol drones can be hooked too (Jeremy, v56), but they get no priority over walls in auto-aim.
-const GRABBABLE = d => d.kind === 'hook' || d.kind === 'core' || d.kind === 'patrol';
-function droneTarget(cx, cy, dir) {
+// Thugs (walkers) can be hooked as well: the chain flings them straight up into the air (Jeremy, v57).
+const GRABBABLE = d => d.kind === 'hook' || d.kind === 'core' || d.kind === 'patrol' || d.kind === 'walker';
+function droneTarget(cx, cy, dir, manual = false) {
   let best = null;
   for (const d of DRONES) {
     if (!d.alive || !GRABBABLE(d)) continue;
-    const dx = d.x - cx, dy = d.y + 6 - cy, dist = Math.hypot(dx, dy);
-    if (dist > ropeLen() || dist < T.ropeMinLength * 1.3 || dy > -40 || dx * dir < -40) continue;
+    const walker = d.kind === 'walker', ty = walker ? d.y - 4 : d.y + 6;
+    const dx = d.x - cx, dy = ty - cy, dist = Math.hypot(dx, dy);
+    if (dist > ropeLen() || dist < T.ropeMinLength * 1.3 || dx * dir < -40) continue;
+    if (walker ? dx * dir < 40 || dy < -60 : dy > -40) continue;   // thugs: ahead of you, on or below your level
+    if (d.kind === 'patrol' && !manual && dy > -90) continue;   // auto-aim skips red drones barely above you (no swinging into pits); aim at one to grab it
     const block = raycast(cx, cy, dx / dist, dy / dist, dist);
     if (block) continue;
-    const score = Math.abs(dist - T.aimIdealDistance) * 0.5 + (d.kind === 'patrol' ? 120 : 0);   // cancels the drone priority below
-    if (!best || score < best.score) best = { x: d.x, y: d.y + 6, d: dist, score, drone: d };
+    const score = Math.abs(dist - T.aimIdealDistance) * 0.5 + (d.kind === 'patrol' || walker ? 120 : 0);   // cancels the drone priority below
+    if (!best || score < best.score) best = { x: d.x, y: ty, d: dist, score, drone: d };
   }
   return best;
 }
@@ -1750,13 +1761,19 @@ function autoTarget() {
 }
 function aimedTarget(wx, wy) {
   const [cx, cy] = center();
-  for (const dr of DRONES) if (dr.alive && GRABBABLE(dr) && Math.hypot(wx - dr.x, wy - dr.y) < 40) { const h = droneTarget(cx, cy, Math.sign(dr.x - cx) || 1); if (h && h.drone === dr) return h; }
+  for (const dr of DRONES) if (dr.alive && GRABBABLE(dr) && Math.hypot(wx - dr.x, wy - dr.y) < 40) { const h = droneTarget(cx, cy, Math.sign(dr.x - cx) || 1, true); if (h && h.drone === dr) return h; }
   const dx = wx - cx, dy = wy - cy, d = Math.hypot(dx, dy) || 1;
   return raycast(cx, cy, dx / d, dy / d, ropeLen());
 }
 
 function attach(hit, from) {
   addChain(); SFX.chainThrow(); SFX.chainBite();
+  if (hit.drone && hit.drone.kind === 'walker') {   // a thug: the chain bites and flings him straight up, where he bursts
+    const d = hit.drone;
+    d.alive = false; d.yank = { t: 0, vx: 0, vy: -1250, up: true }; d.spin = 0;
+    award(500, d.x, d.y - 30, 'Yank'); SFX.yankGrab(); sparkAt(d.x, d.y, 10);
+    return;
+  }
   const [cx, cy] = center();
   const d = Math.hypot(hit.x - cx, hit.y - cy), src = hit;
   // Back the anchor off the surface a hair so the wrap check never starts inside the solid.
