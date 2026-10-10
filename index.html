@@ -1878,6 +1878,7 @@ function step(dt) {
   p.puff = Math.max(0, p.puff - dt * 4);
   if (p.mantle) { stepMantle(dt); stepHazards(dt); afterStep(dt); return; }
 
+  if (introMoveAt && (input.left || input.right || input.jump || input.swing || input.aim)) dismissIntroOnMove();
   // --- Grapple fire / release ---
   autoHit = p.rope ? null : autoTarget();
   if (aimPressed) { const h = aimedTarget(input.aim.x, input.aim.y); if (h && h.d >= T.ropeMinLength) attach(h, 'aim'); }
@@ -3304,7 +3305,13 @@ const powerLabel = () => {
     + (P.walls ? ' · hit walls fast to run up them' : '') + '<br>Shift / K swing (auto‑aim)' + (P.chain < 1 ? ' on your short chain' : '')
     + ' · tap Swing at a drone to yank it down · click and hold to aim · ↑ ↓ reel · R restart · M mute · N music';
 };
-const introEl = document.getElementById('intro'); let introTimer = 0;
+const introEl = document.getElementById('intro'); let introTimer = 0, introMoveAt = 0;
+// the level card goes away as soon as you start moving (Jeremy, v60); a short grace stops a key still held from the last level killing it
+function dismissIntroOnMove() {
+  if (!introMoveAt || performance.now() < introMoveAt) return;
+  introMoveAt = 0; clearTimeout(introTimer);
+  introEl.classList.add('fade'); introTimer = setTimeout(() => { introEl.hidden = true; }, 650);
+}
 // level intro card: what you just unlocked and how to use it; fades after a few seconds
 function showIntro(i) {
   const it = LEVELS[i].intro;
@@ -3316,10 +3323,11 @@ function showIntro(i) {
     : { icons: [TIER_ICON[L.tier]], head: it[0].split(' · ')[0], what: it[0].split(' · ')[1] || '' };
   const card = [['lv', kicker], ['title', title]];
   buildCard(card, up, it[1], 6000);
+  introMoveAt = performance.now() + 400;
 }
 function touchify(howTo) { return matchMedia('(pointer: coarse)').matches ? howTo.replace('Press Jump', 'Tap JUMP').replace(/tap Swing/g, 'tap SWING') : howTo; }
 function buildCard(lines, up, howTo, ms) {
-  clearTimeout(introTimer);
+  clearTimeout(introTimer); introMoveAt = 0;
   introEl.innerHTML = '';
   for (const [cls, txt] of lines) { const d = document.createElement('div'); d.className = cls; d.textContent = txt; introEl.append(d); }
   if (up) {
